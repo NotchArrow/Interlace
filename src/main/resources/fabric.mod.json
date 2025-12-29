@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "interlace",
+  "version": "${version}",
+  "name": "Interlace",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/interlace/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.notcharrow.interlace.Interlace"
+    ]
+  },
+  "mixins": [
+    "interlace.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
