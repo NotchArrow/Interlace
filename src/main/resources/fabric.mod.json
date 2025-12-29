@@ -14,9 +14,6 @@
       "com.notcharrow.interlace.Interlace"
     ]
   },
-  "mixins": [
-    "interlace.mixins.json"
-  ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
