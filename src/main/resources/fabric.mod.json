@@ -4,7 +4,7 @@
   "version": "${version}",
   "name": "Interlace",
   "description": "",
-  "authors": [],
+  "authors": ["NotchArrow"],
   "contact": {},
   "license": "MIT",
   "icon": "assets/interlace/icon.png",
@@ -14,6 +14,9 @@
       "com.notcharrow.interlace.Interlace"
     ]
   },
+  "mixins": [
+    "interlace.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",

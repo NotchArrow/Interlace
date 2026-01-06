@@ -5,7 +5,7 @@ import net.minecraft.item.Items;
 
 import java.util.List;
 
-public class Pattern {
+public class Pattern { // should be able to be removed
 
 	public String patternName;
 	public Item patternItem;
