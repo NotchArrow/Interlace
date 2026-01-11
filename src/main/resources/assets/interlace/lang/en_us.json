@@ -1,4 +1,6 @@
 {
   "key.category.minecraft.interlace": "Interlace",
-  "key.interlace.loomKeybind": "Open GUI"
+  "key.interlace.loomKeybind": "Open GUI",
+  "container.interlace.editor": "Banner Editor",
+  "container.interlace.editor.save": "Save Banner"
 }
