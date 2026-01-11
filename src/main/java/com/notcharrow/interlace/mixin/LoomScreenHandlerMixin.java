@@ -1,5 +1,6 @@
 package com.notcharrow.interlace.mixin;
 
+import com.notcharrow.interlace.keybinds.LoomKeybind;
 import net.minecraft.block.entity.BannerPattern;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
@@ -21,6 +22,7 @@ public class LoomScreenHandlerMixin {
 
 	@Inject(method = "getPatternsFor", at = @At("HEAD"), cancellable = true)
 	private void returnAllPatterns(ItemStack stack, CallbackInfoReturnable<List<RegistryEntry.Reference<BannerPattern>>> cir) {
+        if (!(this instanceof LoomKeybind.Extended)) return;
 		ClientPlayNetworkHandler networkHandler = MinecraftClient.getInstance().getNetworkHandler();
 
 		if (networkHandler == null) {

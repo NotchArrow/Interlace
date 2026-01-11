@@ -1,15 +1,17 @@
 package com.notcharrow.interlace.keybinds;
 
-import com.notcharrow.interlace.mixin.ScreenCoordinateAccessor;
+import com.notcharrow.interlace.Interlace;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.screen.v1.Screens;
-import net.fabricmc.fabric.impl.client.screen.ScreenExtensions;
 import net.minecraft.block.AbstractBannerBlock;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ButtonTextures;
 import net.minecraft.client.gui.screen.ingame.LoomScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TexturedButtonWidget;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.DyeItem;
 import net.minecraft.item.Item;
@@ -17,7 +19,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.screen.LoomScreenHandler;
-import net.minecraft.screen.ScreenTexts;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
@@ -26,136 +27,201 @@ import net.minecraft.util.DyeColor;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.notcharrow.interlace.keybinds.KeybindRegistry.loomKeybind;
 
 public class LoomKeybind {
 
-	public static void register() {
-		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (client.player == null || !loomKeybind.isPressed()) {
+    public static void register() {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.player == null || !loomKeybind.isPressed()) {
                 return;
-			}
+            }
 
-            // System.out.println(client.player.getMainHandStack().getItem().getComponents().get(DataComponentTypes.BANNER_PATTERNS));
-
-            MutableText title = Text.literal("Banner Editor");
+            MutableText title = Text.translatable("container.interlace.editor");
             Style style = Style.EMPTY.withFormatting(Formatting.BOLD);
             title.setStyle(style);
 
-            LoomScreenHandler screenHandler = new LoomScreenHandler(
+            LoomScreenHandler screenHandler = new ExtendedLoomScreenHandler(
                     client.player.currentScreenHandler.syncId,
                     client.player.getInventory());
-            LoomScreen screen = new LoomScreen(
+
+            ExtendedLoomScreen screen = new ExtendedLoomScreen(
                     screenHandler,
                     client.player.getInventory(),
                     title);
+
             client.setScreen(screen);
+        });
+    }
 
-            fillSlots(screen);
+    public static class ExtendedLoomScreen extends LoomScreen {
 
-            Runnable specialButtonsAdder = () -> {
-                drawBannerButtons(screen);
-                drawDyeButtons(screen);
-                drawOutputButton(screen);
-            };
-            specialButtonsAdder.run();
-            ((InterlaceLoomHacks) screen).interlace$onScreenRefreshed(specialButtonsAdder);
-		});
-	}
+        private static final int COLUMNS = 4;
+        private final List<FakeSlot> fakeSlots = new ArrayList<>();
 
-	private static void fillSlots(LoomScreen screen) {
-		Slot bannerSlot = screen.getScreenHandler().getBannerSlot();
-		Slot dyeSlot = screen.getScreenHandler().getDyeSlot();
+        public ExtendedLoomScreen(LoomScreenHandler handler, PlayerInventory inventory, Text title) {
+            super(handler, inventory, title);
+        }
 
-		if (bannerSlot.getStack().isEmpty()) {
-			bannerSlot.setStack(new ItemStack(Items.WHITE_BANNER));
-		}
-		if (dyeSlot.getStack().isEmpty()) {
-			dyeSlot.setStack(new ItemStack(Items.RED_DYE));
-		}
-	}
+        @Override
+        protected void init() {
+            super.init();
+            fakeSlots.clear();
+            fillSlots();
+            addBannerSlots();
+            addDyeSlots();
+            addOutputButton();
+            addSaveButton();
+        }
 
-	private static void drawBannerButtons(LoomScreen screen) {
-		final int BUTTON_SIZE = getButtonSize(screen);
-		Slot bannerSlot = screen.getScreenHandler().getBannerSlot();
+        @Override
+        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+            super.render(context, mouseX, mouseY, delta);
 
-		int i = 0;
-		int x = ((ScreenCoordinateAccessor) screen).interlace$getX() - BUTTON_SIZE * 5;
-		int y = ((ScreenCoordinateAccessor) screen).interlace$getY();
+            for (FakeSlot slot : fakeSlots) {
+                this.drawSlot(context, slot);
+            }
 
-		for (DyeColor color : DyeColor.values()) {
-			if (i % 4 == 0 && i != 0) {
-				x = ((ScreenCoordinateAccessor) screen).interlace$getX() - BUTTON_SIZE * 5;
-				y += BUTTON_SIZE;
-			}
-            ItemStack bannerStack = PaintBucket.maybeBuyFromTheRegistriesStore(color).bannerStack();
-            Screens.getButtons(screen).add(new ItemBasedButtonWidget(
-				x, y, BUTTON_SIZE, BUTTON_SIZE,
-				bannerStack,
-				button -> bannerSlot.setStack(bannerStack.copy())
+            for (FakeSlot slot : fakeSlots) {
+                if (this.isPointWithinBounds(slot.x-this.x, slot.y-this.y, 16, 16, mouseX, mouseY)) {
+                    context.drawItemTooltip(
+                            this.textRenderer,
+                            slot.getStack(),
+                            mouseX,
+                            mouseY
+                    );
+                }
+            }
+        }
+
+        @Override
+        public boolean mouseClicked(Click click, boolean doubled) {
+            if (click.button() == 0) {
+                for (FakeSlot slot : fakeSlots) {
+                    if (this.isPointWithinBounds(slot.x-this.x, slot.y-this.y, 16, 16, click.x(), click.y())) {
+                        slot.slot().setStack(slot.getStack().copy());
+                        return true;
+                    }
+                }
+            }
+            return super.mouseClicked(click, doubled);
+        }
+
+        private void fillSlots() {
+            Slot bannerSlot = this.handler.getBannerSlot();
+            Slot dyeSlot = this.handler.getDyeSlot();
+
+            if (bannerSlot.getStack().isEmpty()) {
+                bannerSlot.setStack(new ItemStack(Items.WHITE_BANNER));
+            }
+            if (dyeSlot.getStack().isEmpty()) {
+                dyeSlot.setStack(new ItemStack(Items.WHITE_DYE));
+            }
+        }
+
+        private void addBannerSlots() {
+            final int SIZE = getButtonSize();
+            Slot bannerSlot = this.handler.getBannerSlot();
+
+            int startX = this.x - (COLUMNS * SIZE) - 4;
+            int startY = this.y;
+
+            int i = 0;
+            for (DyeColor color : DyeColor.values()) {
+                int col = i % COLUMNS;
+                int row = i / COLUMNS;
+
+                ItemStack stack = PaintBucket.maybeBuyFromTheRegistriesStore(color).bannerStack();
+                fakeSlots.add(new FakeSlot(
+                        startX + col * SIZE,
+                        startY + row * SIZE,
+                        stack
+                ) {
+                    @Override
+                    public Slot slot() {
+                        return bannerSlot;
+                    }
+                });
+                i++;
+            }
+        }
+
+        private void addDyeSlots() {
+            final int SIZE = getButtonSize();
+            Slot dyeSlot = this.handler.getDyeSlot();
+
+            int startX = this.x - (COLUMNS * SIZE) - 4;
+            int startY = this.y + ((DyeColor.values().length + COLUMNS - 1) / COLUMNS) * SIZE + 6;
+
+            int i = 0;
+            for (DyeColor color : DyeColor.values()) {
+                int col = i % COLUMNS;
+                int row = i / COLUMNS;
+
+                ItemStack stack = PaintBucket.maybeBuyFromTheRegistriesStore(color).dyeStack();
+                fakeSlots.add(new FakeSlot(
+                        startX + col * SIZE,
+                        startY + row * SIZE,
+                        stack
+                ) {
+                    @Override
+                    public Slot slot() {
+                        return dyeSlot;
+                    }
+                });
+                i++;
+            }
+        }
+
+        private void addOutputButton() {
+            int size = getButtonSize();
+            Slot outputSlot = this.handler.getOutputSlot();
+            Slot bannerSlot = this.handler.getBannerSlot();
+
+            this.addDrawableChild(new TexturedButtonWidget(
+                    this.x + outputSlot.x,
+                    this.y + outputSlot.y,
+                    size,
+                    size,
+                    new ButtonTextures(Identifier.of("interlace", "output")),
+                    button -> {
+                        ItemStack output = outputSlot.getStack();
+                        if (!output.isEmpty() && !ItemStack.areEqual(output, bannerSlot.getStack())) {
+                            bannerSlot.setStack(output.copy());
+                        }
+                    }
             ));
-			x += BUTTON_SIZE;
-			i++;
-		}
-	}
+        }
 
-	private static void drawDyeButtons(LoomScreen screen) {
-		final int BUTTON_SIZE = getButtonSize(screen);
-		Slot dyeSlot = screen.getScreenHandler().getDyeSlot();
+        private int getButtonSize() {
+            return Math.abs(this.handler.getDyeSlot().x - this.handler.getBannerSlot().x);
+        }
 
-		int i = 0;
-		int x = ((ScreenCoordinateAccessor) screen).interlace$getX() - BUTTON_SIZE * 5;
-		int y = ((ScreenCoordinateAccessor) screen).interlace$getY() + BUTTON_SIZE * 5;
+        private void addSaveButton() {
+            Slot outputSlot = this.handler.getOutputSlot();
 
-		for (DyeColor color : DyeColor.values()) {
-			if (i % 4 == 0 && i != 0) {
-				x = ((ScreenCoordinateAccessor) screen).interlace$getX() - BUTTON_SIZE * 5;
-				y += BUTTON_SIZE;
-			}
-            ItemStack dyeStack = PaintBucket.maybeBuyFromTheRegistriesStore(color).dyeStack();
-			Screens.getButtons(screen).add(new ItemBasedButtonWidget(
-					x, y, BUTTON_SIZE, BUTTON_SIZE,
-					dyeStack,
-					button -> {
-						dyeSlot.setStack(dyeStack.copy());
-					}
-			));
-			x += BUTTON_SIZE;
-			i++;
-		}
-	}
+            int x = this.x + this.backgroundWidth + 2;
+            int y = this.y + 2;
+            this.addDrawableChild(new ButtonWidget.Builder(Text.translatable("container.interlace.editor.save"), btn -> {
+                var stack = outputSlot.getStack();
+                var comp = stack.get(DataComponentTypes.BANNER_PATTERNS);
+                if (!stack.isEmpty() && comp != null && !comp.layers().isEmpty()) Interlace.BANNERS.saveBanner(stack.copy());
+            }).position(x, y).width(this.width/5).build());
+        }
+    }
 
-	private static void drawOutputButton(LoomScreen screen) {
-		int BUTTON_SIZE = getButtonSize(screen);
-		Slot outputSlot = screen.getScreenHandler().getOutputSlot();
-		Slot bannerSlot = screen.getScreenHandler().getBannerSlot();
+    public static class ExtendedLoomScreenHandler extends LoomScreenHandler implements Extended {
+        public ExtendedLoomScreenHandler(int syncId, PlayerInventory playerInventory) {
+            super(syncId, playerInventory);
+        }
+    }
 
-		int x = (((ScreenCoordinateAccessor) screen).interlace$getX() + outputSlot.x);
-		int y = (((ScreenCoordinateAccessor) screen).interlace$getY() + outputSlot.y);
-
-		Screens.getButtons(screen).add(new TexturedButtonWidget(
-				x, y, BUTTON_SIZE, BUTTON_SIZE,
-				new ButtonTextures(Identifier.of("interlace", "output")),
-				button -> {
-					ItemStack output = outputSlot.getStack();
-					if (!output.equals(bannerSlot.getStack()) && !output.isEmpty()) {
-						bannerSlot.setStack(output);
-
-						// System.out.println(output.getItem().getTranslationKey());
-						// System.out.println(banner.getColor());
-						// System.out.println(bannerSlot.getStack().getComponents().get(DataComponentTypes.BANNER_PATTERNS));
-					}
-				}
-		));
-	}
-
-	private static int getButtonSize(LoomScreen screen) {
-		return Math.abs(screen.getScreenHandler().getDyeSlot().x - screen.getScreenHandler().getBannerSlot().x);
-	}
-
+    public interface Extended {}
     public record PaintBucket(Item dye, Item banner) {
         public static final Map<DyeColor, PaintBucket> CONTAINERS = new HashMap<>();
         public static final PaintBucket WHITE = new PaintBucket(Items.WHITE_DYE, Items.WHITE_BANNER);
@@ -175,7 +241,9 @@ public class LoomKeybind {
                     if (dye == null && item instanceof DyeItem dyeItem && dyeItem.getColor() == color) {
                         dye = dyeItem;
                     }
-                    if (banner == null && item instanceof BlockItem blockItem && blockItem.getBlock() instanceof AbstractBannerBlock bannerBlock && bannerBlock.getColor() == color) {
+                    if (banner == null && item instanceof BlockItem blockItem &&
+                            blockItem.getBlock() instanceof AbstractBannerBlock bannerBlock &&
+                            bannerBlock.getColor() == color) {
                         banner = blockItem;
                     }
                 }
@@ -194,25 +262,33 @@ public class LoomKeybind {
         }
     }
 
-    public static class ItemBasedButtonWidget extends ButtonWidget {
-        protected final ItemStack stack;
+    private abstract static class FakeSlot extends Slot {
+        private ItemStack stack;
 
-        public ItemBasedButtonWidget(int x, int y, int width, int height, ItemStack stack, ButtonWidget.PressAction pressAction) {
-            this(x, y, width, height, stack, pressAction, ScreenTexts.EMPTY);
-        }
-
-        public ItemBasedButtonWidget(int x, int y, int width, int height, ItemStack stack, ButtonWidget.PressAction pressAction, Text text) {
-            super(x, y, width, height, text, pressAction, DEFAULT_NARRATION_SUPPLIER);
+        public FakeSlot(int x, int y, ItemStack stack) {
+            super(null, 0, x, y);
             this.stack = stack;
         }
 
-        @SuppressWarnings("unused")
-        public ItemBasedButtonWidget(int width, int height, ItemStack stack, ButtonWidget.PressAction pressAction, Text text) {
-            this(0, 0, width, height, stack, pressAction, text);
+        @Override
+        public boolean canInsert(ItemStack stack) {
+            return false;
         }
 
-        public void renderWidget(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
-            context.drawItem(this.stack, this.getX(), this.getY());
+        @Override
+        public boolean canTakeItems(PlayerEntity player) {
+            return false;
         }
+
+        @Override
+        public ItemStack getStack() {
+            return stack;
+        }
+
+        public void setStack(ItemStack stack) {
+            this.stack = stack;
+        }
+
+        public abstract Slot slot();
     }
 }
