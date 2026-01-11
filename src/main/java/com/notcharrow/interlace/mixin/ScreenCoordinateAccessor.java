@@ -7,8 +7,8 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 @Mixin(HandledScreen.class)
 public interface ScreenCoordinateAccessor {
 	@Accessor("x")
-	int getX();
+	int interlace$getX();
 
 	@Accessor("y")
-	int getY();
+	int interlace$getY();
 }

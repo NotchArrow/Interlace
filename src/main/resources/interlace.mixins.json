@@ -4,6 +4,11 @@
   "package": "com.notcharrow.interlace.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "ScreenCoordinateAccessor"
+    "LoomScreenMixin",
+    "ScreenCoordinateAccessor",
+    "ScreenMixin"
+  ],
+  "mixins": [
+    "LoomScreenHandlerMixin"
   ]
 }
